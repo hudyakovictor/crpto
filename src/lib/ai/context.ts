@@ -6,7 +6,7 @@ import {
   hypotheses,
   learningWeights,
 } from "@/db/schema";
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, ne } from "drizzle-orm";
 import { CATEGORY_DEFINITIONS, CATEGORY_KEYS } from "@/lib/types";
 import { loadFilters, type FilterState } from "@/lib/filters";
 
@@ -177,7 +177,13 @@ export async function buildContext(scope: AiScope, userNote?: string): Promise<F
     .from(combinationsTable)
     .orderBy(desc(combinationsTable.earlyValueScore))
     .limit(12);
-  const memory = await db.select().from(aiAnalyses).orderBy(desc(aiAnalyses.createdAt)).limit(6);
+  // Болтовня (smalltalk) в исследовательскую память не попадает — только предметные разборы.
+  const memory = await db
+    .select()
+    .from(aiAnalyses)
+    .where(ne(aiAnalyses.kind, "smalltalk"))
+    .orderBy(desc(aiAnalyses.createdAt))
+    .limit(6);
 
   const decided = resolvedAll.filter((f) => f.outcome === "hit" || f.outcome === "miss");
   const hits = decided.filter((f) => f.outcome === "hit").length;

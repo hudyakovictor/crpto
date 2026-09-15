@@ -115,10 +115,39 @@ export function resolveProviders(): ProviderConfig[] {
   return list;
 }
 
+/**
+ * Системный промпт для свободных follow-up вопросов в чате («ты тут?», «а если только UP?»).
+ * Строгий шаблон применяется ТОЛЬКО к первому анализу scope; здесь — живой короткий ответ,
+ * но с тем же запретом на выдуманные числа и инвест-рекомендации.
+ */
+export const FOLLOWUP_SYSTEM_PROMPT = `Ты — квант-аналитик исследовательской лаборатории, отвечаешь в чате на свободный вопрос пользователя.
+Пиши по-русски, живо и коротко: обычно 1–5 предложений, списки и пункты — только если это нужно для ответа.
+Оперируй ИСКЛЮЧИТЕЛЬНО числами из присланного контекста, ничего не выдумывай. Если нужных данных нет — скажи прямо.
+Вопрос может быть вообще не про рынок («ты тут?», «спасибо») — тогда просто ответь по-человечески, без шаблонов, пунктов и цифр.
+Не давай инвестиционных рекомендаций. Не пиши строку ПАРАМЕТРЫ.`;
+
+/**
+ * Системный промпт для бытовой болтовни («ты тут?», «спасибо»).
+ * На такие сообщения контекст базы вообще не отправляется — только сам вопрос.
+ */
+export const SMALLTALK_SYSTEM_PROMPT = `Ты — дружелюбный ассистент исследовательской лаборатории в чате. Отвечай по-русски, коротко (1–2 предложения).
+Не используй нумерованные пункты, шаблоны, цифры и термины — это обычная болтовня, не анализ. Не давай инвестиционных рекомендаций.`;
+
+const MARKET_RE =
+  /evs|btc|eth|usdt|sol|xrp|doge|\bup\b|\bdown\b|long|short|сигнал|комби|прогноз|фильтр|цикл|категор|expectancy|hit|цена|brier|гипотез|рыно|волатиль|ликвид|фандинг|риск|торг|плеч|стоп|тейк|прибыл|убыт|pnl|монет|бирж|okx|свеч|тренд/i;
+
+/** Короткое бытовое сообщение без рыночного содержания («ты тут?», «спасибо»). */
+export function isSmallTalkQuestion(note: string): boolean {
+  const t = note.trim();
+  if (t.length === 0 || t.length > 60 || /\d/.test(t)) return false;
+  return !MARKET_RE.test(t);
+}
+
 export async function callProvider(
   p: ProviderConfig & { chatExtra?: Record<string, unknown>; systemPrompt?: string; maxTokens?: number },
   userPrompt: string,
-  timeoutMs = 28000
+  timeoutMs = 28000,
+  systemPromptOverride?: string
 ): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -130,7 +159,7 @@ export async function callProvider(
       body: JSON.stringify({
         model: p.model,
         messages: [
-          { role: "system", content: p.systemPrompt ?? SYSTEM_PROMPT },
+          { role: "system", content: systemPromptOverride ?? p.systemPrompt ?? SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.2,

@@ -32,6 +32,7 @@ const KIND_TONE: Record<string, "bull" | "bear" | "info" | "warn" | "accent"> = 
   postmortem: "bear",
   risk_gate: "bull",
   hypothesis_writer: "accent",
+  smalltalk: "info",
 };
 
 const KIND_RU: Record<string, string> = {
@@ -42,6 +43,7 @@ const KIND_RU: Record<string, string> = {
   postmortem: "РАЗБОР ПРОМАХОВ",
   risk_gate: "PRE-TRADE GATE",
   hypothesis_writer: "НОВАЯ ГИПОТЕЗА",
+  smalltalk: "ВОПРОС",
 };
 
 /** Рендер аналитической карточки: нумерованные пункты — плотно и читаемо. */
