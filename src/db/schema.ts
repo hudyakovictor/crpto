@@ -155,6 +155,17 @@ export const dataQualityLogs = pgTable("data_quality_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const oiSnapshots = pgTable("oi_snapshots", {
+  id: serial("id").primaryKey(),
+  symbol: text("symbol").notNull(),
+  oi: doublePrecision("oi").notNull(),
+  oiCcy: doublePrecision("oi_ccy").notNull().default(0),
+  timestamp: timestamp("timestamp").notNull(),
+  regime: text("regime").notNull().default("NEUTRAL_CONSOLIDATION"),
+  liquidationGravityScore: doublePrecision("liquidation_gravity_score").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const aiAnalyses = pgTable("ai_analyses", {
   id: serial("id").primaryKey(),
   kind: text("kind").notNull(), // signal_today, combo_audit, edge_critic, regime_playbook, postmortem, risk_gate, hypothesis_writer
@@ -164,6 +175,15 @@ export const aiAnalyses = pgTable("ai_analyses", {
   model: text("model"),
   contextJson: jsonb("context_json"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const aiProviderSettings = pgTable("ai_provider_settings", {
+  id: serial("id").primaryKey(),
+  profile: text("profile").notNull().default("default").unique(),
+  providerOrder: text("provider_order").notNull().default("nvidia,opencode,gpt4free,qwen-local"),
+  enabled: text("enabled").notNull().default("nvidia,opencode,gpt4free,qwen-local"),
+  configs: jsonb("configs").notNull().default({}),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const signalFilters = pgTable("signal_filters", {

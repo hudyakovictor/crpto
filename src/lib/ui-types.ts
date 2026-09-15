@@ -388,6 +388,26 @@ export interface FiltersResponse {
   options: { operators: string[]; directions: string[]; regimes: string[] };
 }
 
+export interface AiProviderPublic {
+  id: string;
+  titleRu: string;
+  hintRu: string;
+  needsKey: boolean;
+  enabled: boolean;
+  baseUrl: string;
+  model: string;
+  timeoutMs: number;
+  keySource: "env" | "settings" | "none";
+  hasKey: boolean;
+}
+
+export interface AiSettingsResponse {
+  success: boolean;
+  error?: string;
+  providers: AiProviderPublic[];
+  updatedAt?: string;
+}
+
 export interface AutopilotInfo {
   enabled: boolean;
   cyclesCompleted: number;

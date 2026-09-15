@@ -39,7 +39,7 @@ export async function GET() {
       const { funding } = await okxClient.getFundingRate(sym);
       const { oi } = await okxClient.getOpenInterest(sym);
 
-      const signals = featureEngine.calculate15Categories({
+const feOut = featureEngine.calculate15Categories({
         symbol: sym,
         candles,
         book,
@@ -49,7 +49,9 @@ export async function GET() {
         allTickersPerformance: allTickersPerf,
       });
 
-      const regime = featureEngine.detectRegime(candles);
+      const signals = feOut.signals;
+      const regime = feOut.regime;
+      const macroRegime = feOut.macroRegime;
       const ticker = tickers.find((t) => t.instId === sym);
       const closes24 = candles.slice(-24).map((c) => c.close);
 

@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Bot, Eraser, Loader2, RotateCcw, Save, Settings2, Trash2, X } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, Eraser, KeyRound, Loader2, RotateCcw, Save, Settings2, Sparkles, Trash2, X } from "lucide-react";
 import { postJson, toast } from "./data";
-import type { AutopilotInfo, FiltersResponse, FiltersState } from "@/lib/ui-types";
+import type { AiProviderPublic, AiSettingsResponse, AutopilotInfo, FiltersResponse, FiltersState } from "@/lib/ui-types";
 import { CATEGORY_RU } from "@/lib/format";
 import { Pill } from "./ui";
 
@@ -50,19 +50,24 @@ export function SettingsDrawer({
   const [loaded, setLoaded] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [aiProviders, setAiProviders] = useState<AiProviderPublic[] | null>(null);
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiKeys, setAiKeys] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open) return;
     setConfirmReset(false);
     (async () => {
       try {
-        const [f, a] = await Promise.all([
+        const [f, a, ai] = await Promise.all([
           fetch("/api/research/filters", { cache: "no-store" }).then((r) => r.json()) as Promise<FiltersResponse>,
           fetch("/api/research/autopilot", { cache: "no-store" }).then((r) => r.json()),
+          fetch("/api/research/ai-settings", { cache: "no-store" }).then((r) => r.json()) as Promise<AiSettingsResponse>,
         ]);
         setFilters(f.filters);
         setOptions(f.options);
         setAp(a.autopilot);
+        if (ai.success) setAiProviders(ai.providers);
         setLoaded(true);
       } catch (e) {
         toast("err", "Не удалось загрузить настройки", e instanceof Error ? e.message : "");
@@ -85,6 +90,77 @@ export function SettingsDrawer({
       toast("err", "Ошибка сохранения", e instanceof Error ? e.message : "");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveAi = async () => {
+    if (!aiProviders) return;
+    setAiSaving(true);
+    try {
+      const configs: Record<string, { baseUrl: string; model: string; apiKey?: string }> = {};
+      for (const p of aiProviders) {
+        configs[p.id] = { baseUrl: p.baseUrl, model: p.model };
+        const k = (aiKeys[p.id] ?? "").trim();
+        if (k) configs[p.id].apiKey = k;
+      }
+      const r = await fetch("/api/research/ai-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order: aiProviders.map((p) => p.id),
+          enabled: aiProviders.filter((p) => p.enabled).map((p) => p.id),
+          configs,
+        }),
+      }).then((r) => r.json()) as AiSettingsResponse & { message?: string };
+      if (!r.success) throw new Error(r.error || "save failed");
+      setAiProviders(r.providers);
+      setAiKeys({});
+      const chain = r.providers.filter((p) => p.enabled).map((p) => p.id).join(" → ");
+      toast("ok", "Настройки ИИ сохранены", `Цепочка: ${chain || "—"}`);
+      await onDataChanged();
+    } catch (e) {
+      toast("err", "Ошибка сохранения ИИ", e instanceof Error ? e.message : "");
+    } finally {
+      setAiSaving(false);
+    }
+  };
+
+  const moveAi = (id: string, dir: -1 | 1) => {
+    setAiProviders((prev) => {
+      if (!prev) return prev;
+      const i = prev.findIndex((p) => p.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+
+  const toggleAiProvider = (id: string) => {
+    setAiProviders((prev) => {
+      if (!prev) return prev;
+      const p = prev.find((x) => x.id === id);
+      if (p?.enabled && prev.filter((x) => x.enabled).length <= 1) {
+        toast("err", "Нельзя выключить всех", "Оставьте хотя бы один ИИ-провайдер включённым");
+        return prev;
+      }
+      return prev.map((x) => (x.id === id ? { ...x, enabled: !x.enabled } : x));
+    });
+  };
+
+  const clearAiKey = async (id: string) => {
+    try {
+      const r = await fetch("/api/research/ai-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ configs: { [id]: { apiKey: "" } } }),
+      }).then((r) => r.json()) as AiSettingsResponse;
+      if (!r.success) throw new Error(r.error || "save failed");
+      setAiProviders(r.providers);
+      toast("ok", "Ключ удалён", "Теперь используется ключ из env (если задан)");
+    } catch (e) {
+      toast("err", "Ошибка", e instanceof Error ? e.message : "");
     }
   };
 
@@ -316,6 +392,154 @@ export function SettingsDrawer({
                         {ap.enabled ? "РАБОТАЕТ" : "ПАУЗА"}
                       </div>
                     </div>
+                  </div>
+                )}
+              </section>
+
+              {/* ── ИИ-провайдеры ── */}
+              <section className="rounded-[10px] border border-border bg-surface2 p-4">
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="size-4.5 text-accent" strokeWidth={1.9} />
+                  <div>
+                    <h3 className="text-[14px] font-bold text-text-1">ИИ-провайдеры</h3>
+                    <p className="text-[13px] leading-snug text-text-3">
+                      Порядок опроса сверху вниз. Первый ответивший даёт разбор; если все упали — локальный glassbox.
+                    </p>
+                  </div>
+                </div>
+
+                {!aiProviders ? (
+                  <div className="flex items-center gap-2 py-4 text-[13px] text-text-3">
+                    <Loader2 className="size-4 animate-spin" /> Загрузка провайдеров…
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {aiProviders.map((p, idx) => (
+                      <div
+                        key={p.id}
+                        className={`rounded-md border bg-surface p-3 ${p.enabled ? "border-border" : "border-border opacity-60"}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="num text-[12px] font-bold text-text-3">{idx + 1}</span>
+                            <div className="min-w-0">
+                              <div className="truncate text-[13.5px] font-bold text-text-1">{p.titleRu}</div>
+                              <div className="flex flex-wrap items-center gap-1 text-[12px]">
+                                <span style={{ color: p.enabled ? "var(--green)" : "var(--text-3)" }}>
+                                  {p.enabled ? "ВКЛ" : "ВЫКЛ"}
+                                </span>
+                                {p.needsKey && (
+                                  <span className="text-text-3">
+                                    · ключ: {p.keySource === "env" ? "env" : p.keySource === "settings" ? "настройки" : "НЕТ"}
+                                  </span>
+                                )}
+                                {!p.needsKey && <span className="text-text-3">· без ключа</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              onClick={() => moveAi(p.id, -1)}
+                              disabled={idx === 0}
+                              aria-label="Выше"
+                              className="hoverable flex size-7 items-center justify-center rounded-md border border-border text-text-3 hover:text-text-1 disabled:opacity-30"
+                            >
+                              <ChevronUp className="size-3.5" />
+                            </button>
+                            <button
+                              onClick={() => moveAi(p.id, 1)}
+                              disabled={idx === aiProviders.length - 1}
+                              aria-label="Ниже"
+                              className="hoverable flex size-7 items-center justify-center rounded-md border border-border text-text-3 hover:text-text-1 disabled:opacity-30"
+                            >
+                              <ChevronDown className="size-3.5" />
+                            </button>
+                            <button
+                              onClick={() => toggleAiProvider(p.id)}
+                              aria-label="Вкл/выкл"
+                              className={`relative h-6 w-11 rounded-full transition-colors duration-150 ${p.enabled ? "bg-[rgba(91,141,238,0.85)]" : "bg-surface3"}`}
+                            >
+                              <span
+                                className="absolute top-[3px] size-[18px] rounded-full bg-white transition-[left] duration-150"
+                                style={{ left: p.enabled ? "23px" : "3px" }}
+                              />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="mt-1.5 text-[12.5px] leading-snug text-text-3">{p.hintRu}</p>
+
+                        <div className="mt-2 grid grid-cols-1 gap-2">
+                          <label className="block">
+                            <span className="mb-1 block text-[12px] font-semibold text-text-3">Base URL</span>
+                            <input
+                              value={p.baseUrl}
+                              onChange={(e) =>
+                                setAiProviders((prev) => prev?.map((x) => (x.id === p.id ? { ...x, baseUrl: e.target.value } : x)) ?? null)
+                              }
+                              spellCheck={false}
+                              className="w-full rounded-md border border-border bg-surface2 px-2.5 py-1.5 text-[13px] text-text-1 outline-none focus:border-accent"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-[12px] font-semibold text-text-3">Модель</span>
+                            <input
+                              value={p.model}
+                              onChange={(e) =>
+                                setAiProviders((prev) => prev?.map((x) => (x.id === p.id ? { ...x, model: e.target.value } : x)) ?? null)
+                              }
+                              spellCheck={false}
+                              className="w-full rounded-md border border-border bg-surface2 px-2.5 py-1.5 text-[13px] text-text-1 outline-none focus:border-accent"
+                            />
+                          </label>
+                          {p.needsKey && (
+                            <div>
+                              <span className="mb-1 flex items-center gap-1 text-[12px] font-semibold text-text-3">
+                                <KeyRound className="size-3" /> API-ключ
+                              </span>
+                              <div className="flex gap-1.5">
+                                <input
+                                  type="password"
+                                  value={aiKeys[p.id] ?? ""}
+                                  onChange={(e) => setAiKeys((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                                  placeholder={
+                                    p.keySource === "env"
+                                      ? "Ключ из env (скрыт) — введите, чтобы переопределить"
+                                      : p.keySource === "settings"
+                                        ? "Ключ сохранён — введите новый для замены"
+                                        : "Ключ отсутствует — введите"
+                                  }
+                                  autoComplete="off"
+                                  spellCheck={false}
+                                  className="min-w-0 flex-1 rounded-md border border-border bg-surface2 px-2.5 py-1.5 text-[13px] text-text-1 outline-none focus:border-accent"
+                                />
+                                {p.keySource === "settings" && (
+                                  <button
+                                    onClick={() => void clearAiKey(p.id)}
+                                    className="hoverable shrink-0 rounded-md border border-border px-2 text-[12.5px] text-text-3 hover:text-bear"
+                                  >
+                                    Сброс
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      onClick={() => void saveAi()}
+                      disabled={aiSaving}
+                      className="hoverable pressable mt-1 flex w-full items-center justify-center gap-2 rounded-md border border-[rgba(91,141,238,0.5)] bg-accent px-4 py-2.5 text-[14px] font-bold text-white hover:bg-[#6d9bf3] disabled:opacity-60"
+                    >
+                      {aiSaving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" strokeWidth={2} />}
+                      Сохранить ИИ
+                    </button>
+                    <p className="text-[12.5px] leading-snug text-text-3">
+                      Ключи хранятся только в локальной БД и никогда не показываются обратно. Qwen local работает через
+                      Ollama без ключа.
+                    </p>
                   </div>
                 )}
               </section>

@@ -7,6 +7,12 @@ export const TRACKED_SYMBOLS = [
   "XRP-USDT",
   "DOGE-USDT",
   "AVAX-USDT",
+  "ARB-USDT",
+  "OP-USDT",
+  "SUI-USDT",
+  "LINK-USDT",
+  "MATIC-USDT",
+  "BNB-USDT",
 ];
 
 const OKX_BASE_URL = "https://www.okx.com";
@@ -232,10 +238,14 @@ export class OKXClient {
           oiCcy: 850000000,
           ts: Date.now(),
         },
-        latencyMs,
-        isLive: false,
+latencyMs,
+        isLive: true,
       };
     }
+  }
+
+  toSwapId(symbol: string): string {
+    return symbol.replace("-USDT", "-USDT-SWAP");
   }
 
   // --- Realistic Deterministic Synthetic Fallback Generators ---

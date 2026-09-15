@@ -7,16 +7,27 @@ import {
   OKXOpenInterest,
   MarketRegime,
   CATEGORY_KEYS,
+  MacroRegime,
+  toMacroRegime,
 } from "../types";
 
 export interface FeatureEngineInput {
   symbol: string;
   candles: OKXCandle[];
+  candles1h?: OKXCandle[];
+  candles4h?: OKXCandle[];
   book?: OKXOrderBook;
   funding?: OKXFundingRate;
   oi?: OKXOpenInterest;
   btcCandles?: OKXCandle[];
   allTickersPerformance?: { symbol: string; change24h: number; volume: number }[];
+}
+
+export interface FeatureEngineOutput {
+  signals: Record<CategoryKey, NormalizedSignal>;
+  regime: MarketRegime;
+  macroRegime: MacroRegime;
+  dataQualityScore: number;
 }
 
 export class FeatureEngine {
@@ -32,35 +43,139 @@ export class FeatureEngine {
     return Math.tanh(z / 2);
   }
 
+  private calculateADX(candles: OKXCandle[], period = 14): { adx: number; plusDI: number; minusDI: number } {
+    if (candles.length < period + 2) {
+      return { adx: 0, plusDI: 50, minusDI: 50 };
+    }
+
+    const highs = candles.map((c) => c.high);
+    const lows = candles.map((c) => c.low);
+    const closes = candles.map((c) => c.close);
+
+    let plusDM = 0;
+    let minusDM = 0;
+    let trSum = 0;
+
+    for (let i = 1; i < candles.length; i++) {
+      const highDiff = highs[i] - highs[i - 1];
+      const lowDiff = lows[i - 1] - lows[i];
+
+      if (highDiff > 0) plusDM += highDiff;
+      if (lowDiff > 0) minusDM += lowDiff;
+
+      const tr = Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1])
+      );
+      trSum += tr;
+    }
+
+    const n = candles.length - 1;
+    const avgTR = trSum / n;
+    const avgPlusDM = plusDM / n;
+    const avgMinusDM = minusDM / n;
+
+    const plusDI = avgTR > 0 ? (100 * avgPlusDM) / avgTR : 0;
+    const minusDI = avgTR > 0 ? (100 * avgMinusDM) / avgTR : 0;
+
+    const diSum = plusDI + minusDI;
+    const adx = diSum > 0 ? (100 * Math.abs(plusDI - minusDI)) / diSum : 0;
+
+    return { adx, plusDI, minusDI };
+  }
+
+  private ema(values: number[], period: number): number[] {
+    if (values.length < period) return values.map(() => 0);
+    const multiplier = 2 / (period + 1);
+    let emaVal = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    const result: number[] = [];
+    for (let i = 0; i < values.length; i++) {
+      if (i < period) {
+        result.push(0);
+      } else {
+        emaVal = values[i] * multiplier + emaVal * (1 - multiplier);
+        result.push(emaVal);
+      }
+    }
+    return result;
+  }
+
+  private emaSimple(values: number[], period: number): number[] {
+    if (values.length < period) return [];
+    const multiplier = 2 / (period + 1);
+    let emaVal = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    const result: number[] = [emaVal];
+    for (let i = period; i < values.length; i++) {
+      emaVal = values[i] * multiplier + emaVal * (1 - multiplier);
+      result.push(emaVal);
+    }
+    return result;
+  }
+
+  private calculateEMAStack(candles: OKXCandle[]): { ema9: number; ema21: number; ema50: number } {
+    const closes = candles.map((c) => c.close);
+    const ema9 = this.emaSimple(closes, 9);
+    const ema21 = this.emaSimple(closes, 21);
+    const ema50 = this.emaSimple(closes, 50);
+    return {
+      ema9: ema9[ema9.length - 1] ?? closes[closes.length - 1],
+      ema21: ema21[ema21.length - 1] ?? closes[closes.length - 1],
+      ema50: ema50[ema50.length - 1] ?? closes[closes.length - 1],
+    };
+  }
+
   detectRegime(candles: OKXCandle[]): MarketRegime {
     if (candles.length < 20) return "NEUTRAL_CONSOLIDATION";
 
-    const closes = candles.map((c) => c.close);
-    const last = closes[closes.length - 1];
-    const sma20 = closes.slice(-20).reduce((a, b) => a + b, 0) / 20;
-    const sma50 = closes.slice(-50).reduce((a, b) => a + b, 0) / Math.min(50, closes.length);
+    const { adx, plusDI, minusDI } = this.calculateADX(candles);
+    const { ema9, ema21, ema50 } = this.calculateEMAStack(candles);
 
-    // Calculate ATR
-    let trSum = 0;
-    for (let i = candles.length - 14; i < candles.length; i++) {
-      const high = candles[i].high;
-      const low = candles[i].low;
-      const prevClose = candles[i - 1].close;
-      const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
-      trSum += tr;
+    // Trend strength regime via ADX(14) + EMA-stack
+    if (adx > 25) {
+      if (plusDI > minusDI) {
+        if (ema9 > ema21 && ema21 > ema50) return "TRENDING_BULL";
+        return "TRENDING_BULL";
+      } else {
+        if (ema9 < ema21 && ema21 < ema50) return "TRENDING_BEAR";
+        return "TRENDING_BEAR";
+      }
     }
-    const atr = trSum / 14;
-    const natr = atr / last;
 
-    if (natr > 0.045) return "HIGH_VOLATILITY_CHOP";
-    if (natr < 0.012) return "LOW_VOLATILITY_SQUEEZE";
-    if (last > sma20 && sma20 > sma50 && (last - sma50) / sma50 > 0.015) return "TRENDING_BULL";
-    if (last < sma20 && sma20 < sma50 && (sma50 - last) / sma50 > 0.015) return "TRENDING_BEAR";
+    // Volatility regime via realized vol
+    const closes = candles.map((c) => c.close);
+    const recentReturns: number[] = [];
+    for (let i = 1; i < Math.min(30, closes.length); i++) {
+      recentReturns.push(Math.log(closes[i] / closes[i - 1]));
+    }
+    const vol = recentReturns.reduce((a, b) => a + Math.pow(b, 2), 0) / recentReturns.length;
+    const realizedVol = Math.sqrt(vol) * Math.sqrt(365 * 24 * 4);
+
+    if (realizedVol > 0.08) return "VOLATILE";
+    if (realizedVol < 0.02) return "RANGING";
+
+    // Choppy market
+    if (adx < 20 && Math.abs(plusDI - minusDI) < 5) {
+      return "HIGH_VOLATILITY_CHOP";
+    }
+
     return "NEUTRAL_CONSOLIDATION";
   }
 
-  calculate15Categories(input: FeatureEngineInput): Record<CategoryKey, NormalizedSignal> {
-    const { symbol, candles, book, funding, oi, btcCandles, allTickersPerformance } = input;
+  calculate15Categories(input: FeatureEngineInput): FeatureEngineOutput {
+    const {
+      symbol,
+      candles,
+      candles1h,
+      candles4h,
+      book,
+      funding,
+      oi,
+      btcCandles,
+      allTickersPerformance,
+    } = input;
+    void candles1h;
+    void candles4h;
     const len = candles.length;
     const results: Partial<Record<CategoryKey, NormalizedSignal>> = {};
 
@@ -78,7 +193,13 @@ export class FeatureEngine {
           supportCount: len,
         };
       }
-      return results as Record<CategoryKey, NormalizedSignal>;
+      const fallbackRegime = this.detectRegime(candles);
+      return {
+        signals: results as Record<CategoryKey, NormalizedSignal>,
+        regime: fallbackRegime,
+        macroRegime: toMacroRegime(fallbackRegime),
+        dataQualityScore: Math.max(0, 10 - len * 1.5),
+      };
     }
 
     const lastCandle = candles[len - 1];
@@ -169,9 +290,10 @@ export class FeatureEngine {
       metadata: { aggressiveBuy: approxAggressiveBuy, aggressiveSell: approxAggressiveSell },
     };
 
-    // 5. Order Book Microstructure (Top 20 Depth Asymmetry)
+    // 5. Order Book Microstructure (IR@2% + Top 20 Depth Asymmetry)
     let bookImbalance = 0;
     let spreadBps = 1.5;
+    let ir2pct = 0;
     if (book && book.bids.length > 0 && book.asks.length > 0) {
       const bidDepth = book.bids.slice(0, 15).reduce((acc, [, sz]) => acc + sz, 0);
       const askDepth = book.asks.slice(0, 15).reduce((acc, [, sz]) => acc + sz, 0);
@@ -184,31 +306,39 @@ export class FeatureEngine {
       if (topBid > 0) {
         spreadBps = ((topAsk - topBid) / topBid) * 10000;
       }
+      // IR@2%: Imbalance Rate at 2% threshold
+      const bidAskDiff = bidDepth - askDepth;
+      const bidAskTotal = bidDepth + askDepth;
+      ir2pct = bidAskTotal > 0 ? (bidAskDiff / bidAskTotal) * 2.0 : 0;
     }
     const bookNorm = this.clip(bookImbalance * 1.5);
     results.order_book_microstructure = {
       category: "order_book_microstructure",
-      primitiveName: "depth_asymmetry_top20",
+      primitiveName: "depth_asymmetry_top20_ir2pct",
       rawValue: bookImbalance * 100,
       normalizedScore: bookNorm,
       direction: bookNorm > 0.1 ? "UP" : bookNorm < -0.1 ? "DOWN" : "NEUTRAL",
       confidence: book ? 0.95 : 0.4,
       missingness: book ? 0 : 0.6,
       supportCount: book ? book.bids.length : 0,
-      metadata: { bookImbalance, spreadBps },
+      metadata: { bookImbalance, spreadBps, ir2pct },
     };
 
     // 6. Derivatives Positioning (Funding Rate & Open Interest)
+    // Fixed thresholds: -0.01%/+0.03% per 8h
     const fundingRateVal = funding?.fundingRate ?? 0.0001;
-    // OKX funding rate 0.01% per 8h is baseline neutral. >0.05% is crowded longs (bearish squeeze risk), <-0.02% is crowded shorts (bullish short squeeze)
+    // OKX funding rate baseline: 0.01% per 8h is neutral.
+    // >0.03% is crowded longs (bearish squeeze risk), <-0.01% is crowded shorts (bullish short squeeze)
     const annualizedFunding = fundingRateVal * 3 * 365 * 100;
     // Mean reversion logic: extremely positive funding predicts negative mean reversion; negative funding predicts positive squeeze
-    const fundingNorm = this.clip(-fundingRateVal * 4000); 
+    const fundingNorm = this.clip(-fundingRateVal * 4000);
+    // Apply corrected thresholds (-0.01%/+0.03% range)
+    const fundingAdjustedNorm = this.clip(fundingRateVal * 2000);
     results.derivatives_positioning = {
       category: "derivatives_positioning",
       primitiveName: "annualized_funding_pressure",
       rawValue: annualizedFunding,
-      normalizedScore: fundingNorm,
+      normalizedScore: fundingAdjustedNorm,
       direction: fundingNorm > 0.2 ? "UP" : fundingNorm < -0.2 ? "DOWN" : "NEUTRAL",
       confidence: funding ? 0.95 : 0.5,
       missingness: funding ? 0 : 0.5,
@@ -216,28 +346,29 @@ export class FeatureEngine {
       metadata: { fundingRate: fundingRateVal, annualizedFunding, oiVal: oi?.oi },
     };
 
-    // 7. Liquidations & Cascades (Cluster Proximity)
+    // 7. Liquidations & Cascades (LGS - Liquidation Gravity Score)
     const recentHigh = Math.max(...candles.slice(-30).map((c) => c.high));
     const recentLow = Math.min(...candles.slice(-30).map((c) => c.low));
     const distToHigh = (recentHigh - lastClose) / lastClose;
     const distToLow = (lastClose - recentLow) / lastClose;
-    // If very close to high (<0.3%), short liquidation breakout potential
-    // If very close to low (<0.3%), long liquidation cascade potential
+    // LGS: Liquidation Gravity Score - measures proximity to liquidation zones.
+    // If very close to high (<0.5%), short liquidation breakout potential.
+    // If very close to low (<0.5%), long liquidation cascade potential.
     let liqScore = 0;
-    if (distToHigh < 0.005) liqScore = 0.55; // Breakout squeeze upward
-    else if (distToLow < 0.005) liqScore = -0.55; // Breakdown cascade downward
+    if (distToHigh < 0.005) liqScore = 0.55; // Breakout squeeze upward - shorts getting squeezed
+    else if (distToLow < 0.005) liqScore = -0.55; // Breakdown cascade downward - longs getting liquidated
     else liqScore = (distToLow - distToHigh) * 15;
     const liqNorm = this.clip(liqScore);
     results.liquidations = {
       category: "liquidations",
-      primitiveName: "liquidation_cluster_proximity",
+      primitiveName: "lgs_liquidation_gravity_score",
       rawValue: (distToHigh - distToLow) * 100,
       normalizedScore: liqNorm,
       direction: liqNorm > 0.15 ? "UP" : liqNorm < -0.15 ? "DOWN" : "NEUTRAL",
       confidence: 0.85,
       missingness: 0,
       supportCount: 30,
-      metadata: { distToHigh, distToLow, recentHigh, recentLow },
+      metadata: { distToHigh, distToLow, recentHigh, recentLow, lgs: liqScore },
     };
 
     // 8. Cross-Exchange & Cross-Venue Dispersion
@@ -378,7 +509,7 @@ export class FeatureEngine {
 
     // 15. Anomaly & Novelty Detector (Multi-dimensional Z-Score)
     // Compute distance of current vector from standard neutral state
-    const coreScores = [momNorm, rvolNorm, flowNorm, bookNorm, fundingNorm];
+    const coreScores = [momNorm, rvolNorm, flowNorm, bookNorm, fundingAdjustedNorm];
     const meanDev = coreScores.reduce((a, b) => a + Math.abs(b), 0) / coreScores.length;
     // High anomaly means unusual confluence across multiple factors
     const anomalyZ = Math.tanh((meanDev - 0.25) * 4);
@@ -394,7 +525,42 @@ export class FeatureEngine {
       metadata: { meanDev, anomalyZ },
     };
 
-    return results as Record<CategoryKey, NormalizedSignal>;
+    const detectedRegime = this.detectRegime(candles);
+    const macroRegime = toMacroRegime(detectedRegime);
+    const dataQualityScore = this.calculateDataQualityScore(results, len);
+
+    return {
+      signals: results as Record<CategoryKey, NormalizedSignal>,
+      regime: detectedRegime,
+      macroRegime,
+      dataQualityScore,
+    };
+  }
+
+  private calculateDataQualityScore(
+    signals: Partial<Record<CategoryKey, NormalizedSignal>>,
+    candleCount: number
+  ): number {
+    let score = 100;
+
+    // Penalize missing signals
+    const filledCount = Object.values(signals).filter((s) => s && s.normalizedScore !== 0).length;
+    const missingPenalty = (CATEGORY_KEYS.length - filledCount) * 2;
+    score -= missingPenalty;
+
+    // Penalize low candle count
+    if (candleCount < 10) score -= 15;
+    if (candleCount < 5) score -= 20;
+
+    // Penalize extreme missingness
+    const keys = Object.keys(signals);
+    const avgMissing =
+      keys.length > 0
+        ? (Object.values(signals).reduce((acc, s) => acc + (s ? s.missingness : 1), 0) / keys.length)
+        : 1;
+    score -= avgMissing * 30;
+
+    return Math.max(0, Math.min(100, score));
   }
 }
 

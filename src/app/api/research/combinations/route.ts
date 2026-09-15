@@ -24,7 +24,7 @@ export async function GET(req: Request) {
       weightsMap[w.categoryName] = w.currentWeight;
     }
 
-    const signals = featureEngine.calculate15Categories({
+    const feOut = featureEngine.calculate15Categories({
       symbol,
       candles,
       book,
@@ -32,9 +32,10 @@ export async function GET(req: Request) {
       oi,
     });
 
-    const regime = featureEngine.detectRegime(candles);
+    const signals = feOut.signals;
+    const regime = feOut.regime;
 
-    // Generate exactly 100 combinations
+    // Generate exactly 100 variations
     const variations100 = combinationEngine.generate100Combinations(
       symbol,
       signals,

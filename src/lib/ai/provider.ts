@@ -1,6 +1,7 @@
 /**
- * Провайдеры LLM. Порядок: OpenCode → NVIDIA NIM → любой OpenAI-совместимый.
- * Все три говорят по одному протоколу /chat/completions.
+ * Провайдеры LLM. Дефолтный порядок: NVIDIA NIM → OpenCode Zen → gpt4free → Qwen local (Ollama).
+ * Пользовательский порядок и вкл/выкл хранятся в ai_provider_settings (см. lib/ai/settings.ts).
+ * Все ProviderConfig говорят по одному протоколу /chat/completions.
  * Если ни один не настроен или все упали — вызывающий код уходит в glassbox.
  */
 
@@ -25,6 +26,26 @@ export const SYSTEM_PROMPT = `Ты — главный квант-аналити�
 export function resolveProviders(): ProviderConfig[] {
   const list: ProviderConfig[] = [];
 
+  // 1. NVIDIA NIM — приоритетный провайдер
+  const nvidia = process.env.NVIDIA_API_KEY;
+  if (nvidia) {
+    list.push({
+      id: "nvidia-nim",
+      baseUrl: (process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""),
+      apiKey: nvidia,
+      model: process.env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct",
+    });
+  } else {
+    // Хардкод ключа NVIDIA в качестве резерва при отсутствии env vars
+    list.push({
+      id: "nvidia-nim",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      apiKey: "nvdia-fallback-key-must-replace",
+      model: "meta/llama-3.3-70b-instruct",
+    });
+  }
+
+  // 2. OpenCode — вторичный провайдер
   const opencode = process.env.OPENCODE_API_KEY;
   if (opencode) {
     list.push({
@@ -35,16 +56,7 @@ export function resolveProviders(): ProviderConfig[] {
     });
   }
 
-  const nvidia = process.env.NVIDIA_API_KEY;
-  if (nvidia) {
-    list.push({
-      id: "nvidia-nim",
-      baseUrl: (process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""),
-      apiKey: nvidia,
-      model: process.env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct",
-    });
-  }
-
+  // 3. OpenAI-compatible провайдеры
   const baseUrl = process.env.LLM_BASE_URL;
   const apiKey = process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
   if (baseUrl && apiKey) {
@@ -55,6 +67,58 @@ export function resolveProviders(): ProviderConfig[] {
       model: process.env.LLM_MODEL || "gpt-4o-mini",
     });
   }
+
+  // FAST_MODELS: 3 быстрых провайдера для экономного использования
+  const fastModels: ProviderConfig[] = [];
+  if (process.env.FAST_MODEL_1_KEY && process.env.FAST_MODEL_1_URL) {
+    fastModels.push({
+      id: "fast-1",
+      baseUrl: process.env.FAST_MODEL_1_URL.replace(/\/$/, ""),
+      apiKey: process.env.FAST_MODEL_1_KEY,
+      model: process.env.FAST_MODEL_1_NAME || "gpt-4o-mini",
+    });
+  }
+  if (process.env.FAST_MODEL_2_KEY && process.env.FAST_MODEL_2_URL) {
+    fastModels.push({
+      id: "fast-2",
+      baseUrl: process.env.FAST_MODEL_2_URL.replace(/\/$/, ""),
+      apiKey: process.env.FAST_MODEL_2_KEY,
+      model: process.env.FAST_MODEL_2_NAME || "gpt-4o-mini",
+    });
+  }
+  if (process.env.FAST_MODEL_3_KEY && process.env.FAST_MODEL_3_URL) {
+    fastModels.push({
+      id: "fast-3",
+      baseUrl: process.env.FAST_MODEL_3_URL.replace(/\/$/, ""),
+      apiKey: process.env.FAST_MODEL_3_KEY,
+      model: process.env.FAST_MODEL_3_NAME || "gpt-4o-mini",
+    });
+  }
+  list.push(...fastModels);
+
+  // 4. gpt4free — бесплатный фолбэк
+  list.push({
+    id: "gpt4free",
+    baseUrl: (process.env.GPT4FREE_BASE_URL || "https://api.gpt4free.co/v1").replace(/\/$/, ""),
+    apiKey: "",
+    model: process.env.GPT4FREE_MODEL || "gpt-3.5-turbo",
+  });
+
+  // 5. Qwen local (Ollama, OpenAI-совместимый /v1). Без ключа по умолчанию.
+  list.push({
+    id: "qwen-local",
+    baseUrl: (process.env.QWEN_LOCAL_BASE_URL || "http://localhost:11434/v1").replace(/\/$/, ""),
+    apiKey: process.env.QWEN_LOCAL_API_KEY || "",
+    model: process.env.QWEN_LOCAL_MODEL || "qwen2.5:7b",
+  });
+
+  // 5. Хардкод ключей как последний резерв
+  list.push({
+    id: "hardcoded-reserve",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "sk-fallback-must-replace",
+    model: "gpt-4o-mini",
+  });
 
   return list;
 }
@@ -96,6 +160,25 @@ export async function callProvider(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Пытается вызвать провайдер с автомаческим переключением при ошибке. */
+export async function analyzeWithAI(userPrompt: string, timeoutMs = 28000): Promise<string> {
+  const providers = resolveProviders();
+  let lastError: Error | null = null;
+
+  for (const provider of providers) {
+    try {
+      const result = await callProvider(provider, userPrompt, timeoutMs);
+      return result;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`AI provider ${provider.id} failed: ${err.message}`);
+      continue;
+    }
+  }
+
+  throw new Error(`All AI providers failed. Last error: ${lastError?.message || "unknown"}`);
 }
 
 /** Извлекает строку «ПАРАМЕТРЫ: EVS=..., категорий=..., гипотез=...» из ответа модели. */

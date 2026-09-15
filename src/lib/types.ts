@@ -1,10 +1,33 @@
 export type MarketRegime = 
   | "TRENDING_BULL" 
   | "TRENDING_BEAR" 
+  | "RANGING" 
+  | "VOLATILE" 
   | "HIGH_VOLATILITY_CHOP" 
   | "LOW_VOLATILITY_SQUEEZE" 
   | "LIQUIDITY_CRUNCH" 
   | "NEUTRAL_CONSOLIDATION";
+
+export type MacroRegime = "BULLISH" | "BEARISH" | "NEUTRAL" | "UNSTABLE";
+
+export function toMacroRegime(marketRegime: MarketRegime): MacroRegime {
+  switch (marketRegime) {
+    case "TRENDING_BULL":
+    case "TRENDING_BEAR":
+      return "BULLISH";
+    case "RANGING":
+      return "NEUTRAL";
+    case "VOLATILE":
+    case "HIGH_VOLATILITY_CHOP":
+      return "UNSTABLE";
+    case "LOW_VOLATILITY_SQUEEZE":
+    case "LIQUIDITY_CRUNCH":
+    case "NEUTRAL_CONSOLIDATION":
+      return "NEUTRAL";
+    default:
+      return "NEUTRAL";
+  }
+}
 
 export type SignalDirection = "UP" | "DOWN" | "NEUTRAL" | "FLAT" | "RANGE" | "VOLATILITY";
 

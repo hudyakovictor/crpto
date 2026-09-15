@@ -7,7 +7,20 @@ import {
   CATEGORY_KEYS,
   CombinationStatus,
   SignalDirection,
+  MacroRegime,
+  toMacroRegime,
 } from "../types";
+
+export const REGIME_WEIGHT_DELTAS: Record<MarketRegime, number> = {
+  TRENDING_BULL: 0.1,
+  TRENDING_BEAR: -0.1,
+  RANGING: 0.0,
+  VOLATILE: 0.0,
+  HIGH_VOLATILITY_CHOP: -0.15,
+  LOW_VOLATILITY_SQUEEZE: 0.05,
+  LIQUIDITY_CRUNCH: -0.05,
+  NEUTRAL_CONSOLIDATION: 0.0,
+};
 
 export class CombinationEngine {
   /**
@@ -180,7 +193,9 @@ export class CombinationEngine {
     let negativeCount = 0;
 
     for (const sig of includedSignals) {
-      const weight = learnedWeights[sig.category] ?? 1.0;
+      const baseWeight = learnedWeights[sig.category] ?? 1.0;
+      const regimeDelta = REGIME_WEIGHT_DELTAS[regime] ?? 0;
+      const weight = baseWeight + regimeDelta;
       compositeScore += sig.normalizedScore * weight;
       if (sig.normalizedScore > threshold) positiveCount++;
       if (sig.normalizedScore < -threshold) negativeCount++;
@@ -219,8 +234,8 @@ export class CombinationEngine {
 
     agreementCount = Math.max(positiveCount, negativeCount);
 
-    // Calculate the 7 Early Value Score components:
-    // 1. Novelty (0 - 20)
+// Calculate the 7 Early Value Score components:
+// 1. Novelty (0 - 20)
     const anomalySig = signals.anomaly_novelty?.normalizedScore ?? 0;
     const novelty = Math.min(20, Math.max(2, Math.round(Math.abs(anomalySig) * 15 + (categories.length > 3 ? 5 : 2))));
 
@@ -233,8 +248,8 @@ export class CombinationEngine {
     const historicalSupport = Math.min(20, Math.round(Math.min(minSupport / 2, 20)));
 
     // 4. Effect Stability (0 - 15)
-    // Low vol regime or stable trend gives higher stability
-    const isStableRegime = regime === "TRENDING_BULL" || regime === "TRENDING_BEAR" || regime === "LOW_VOLATILITY_SQUEEZE";
+    const macroRegime = toMacroRegime(regime);
+    const isStableRegime = macroRegime === "BULLISH" || macroRegime === "BEARISH";
     const effectStability = isStableRegime ? 12 : 7;
 
     // 5. Coverage & Liquidity (0 - 10)

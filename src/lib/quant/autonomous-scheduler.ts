@@ -226,8 +226,7 @@ export class AutonomousScheduler {
       // Step 5: Get Current Learned Weights
       const currentWeights = await learningLoop.getWeightsMap();
 
-      // Step 6: Market Regime Detection
-      const detectedRegime = featureEngine.detectRegime(btcCandles);
+      // Step 6: Market Regime Detection (via FeatureEngine output, see Step 7)
 
       // Step 7: Compute 15 Signal Categories for Primary Target (BTC-USDT & ETH-USDT)
       const primarySymbol = "BTC-USDT";
@@ -242,7 +241,7 @@ export class AutonomousScheduler {
         volume: t.vol24h,
       }));
 
-      const signals15 = featureEngine.calculate15Categories({
+      const feOut = featureEngine.calculate15Categories({
         symbol: primarySymbol,
         candles: primaryCandles,
         book,
@@ -251,6 +250,11 @@ export class AutonomousScheduler {
         btcCandles,
         allTickersPerformance: allTickersPerf,
       });
+
+      const signals15 = feOut.signals;
+      const detectedRegime = feOut.regime;
+      const macroRegime = feOut.macroRegime;
+      const dataQualityScore = feOut.dataQualityScore;
 
       // Save signals snapshot to Postgres
       for (const [catKey, sig] of Object.entries(signals15)) {
