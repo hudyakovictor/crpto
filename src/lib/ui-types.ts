@@ -353,10 +353,18 @@ export interface AiAnalysisRow {
   createdAt: string;
 }
 
+/** Провайдер локального детерминированного движка (офлайн, без внешней LLM). */
+export const GLASSBOX_PROVIDER_ID = "glassbox-local";
+
+/** true — ответила внешняя LLM (онлайн), false — локальный движок (офлайн). */
+export function isOnlineProvider(providerId: string | null | undefined): boolean {
+  return !!providerId && providerId !== GLASSBOX_PROVIDER_ID;
+}
+
 export interface AiStatusResponse {
   success: boolean;
   error?: string;
-  provider: { id: string; model: string | null; live: boolean };
+  provider: { id: string; model: string | null; live: boolean; chain: string[] };
   promptCatalog: AiPromptMeta[];
   history: AiAnalysisRow[];
 }
@@ -365,7 +373,7 @@ export interface AiRunResponse {
   success: boolean;
   error?: string;
   analysis: AiAnalysisRow;
-  provider: { id: string; model: string | null; live: boolean };
+  provider: { id: string; model: string | null; live: boolean; chain: string[] };
   llmError: string | null;
   contextStats: { resolvedForecasts: number; hitRate: number; topCombo: string | null };
 }

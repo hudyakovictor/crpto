@@ -6,6 +6,7 @@ import { AI_SCOPES, SCOPE_META, buildContext, type AiScope } from "@/lib/ai/cont
 import { callProvider, parseParamsFromText } from "@/lib/ai/provider";
 import { loadAiSettingsPublic, resolveProvidersFromSettings } from "@/lib/ai/settings";
 import { glassboxAnalyze } from "@/lib/ai/glassbox";
+import { GLASSBOX_PROVIDER_ID, isOnlineProvider } from "@/lib/ui-types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,7 +22,7 @@ export async function GET() {
       success: true,
       provider: providers.length
         ? { id: providers[0].id, model: providers[0].model, live: true, chain: providers.map((p) => p.id) }
-        : { id: "glassbox-local", model: "rule-engine v4", live: false, chain: ["glassbox-local"] },
+        : { id: GLASSBOX_PROVIDER_ID, model: "rule-engine v4", live: false, chain: [GLASSBOX_PROVIDER_ID] },
       aiSettings: settings,
       promptCatalog: AI_SCOPES.map((k) => ({
         key: k,
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
     const providers = await resolveProvidersFromSettings();
 
     let content = "";
-    let usedProvider = "glassbox-local";
+    let usedProvider = GLASSBOX_PROVIDER_ID;
     let usedModel: string | null = "rule-engine v4";
     const errors: string[] = [];
 
@@ -102,7 +103,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       analysis: saved,
-      provider: { id: usedProvider, model: usedModel, live: usedProvider !== "glassbox-local" },
+      provider: {
+        id: usedProvider,
+        model: usedModel,
+        live: isOnlineProvider(usedProvider),
+        chain: [...providers.map((p) => p.id), GLASSBOX_PROVIDER_ID],
+      },
       llmError: errors.length ? errors.join(" | ") : null,
       contextChars: ctx.text.length,
       stats: ctx.stats,

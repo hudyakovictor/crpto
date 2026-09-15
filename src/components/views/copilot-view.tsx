@@ -18,6 +18,7 @@ import type { ApiState } from "../data";
 import { useAiDock } from "../ai-dock";
 import { postJson, toast } from "../data";
 import type { AiAnalysisRow, AiRunResponse, AiStatusResponse } from "@/lib/ui-types";
+import { isOnlineProvider } from "@/lib/ui-types";
 import { fmtClock, timeAgo } from "@/lib/format";
 import { EmptyState, ErrorState, Panel, Pill, SkeletonRows, Tip, TipRow,
   ViewGuide,
@@ -46,12 +47,26 @@ const KIND_RU: Record<string, string> = {
 /** Рендер аналитической карточки: нумерованные пункты — плотно и читаемо. */
 function AnalysisCard({ a, fresh }: { a: AiAnalysisRow; fresh?: boolean }) {
   const lines = a.content.split("\n").filter((l) => l.trim().length > 0);
+  const online = isOnlineProvider(a.provider);
   return (
     <article
       className={`rounded-[10px] border bg-surface2 p-3.5 ${fresh ? "border-[rgba(91,141,238,0.4)]" : "border-border"}`}
     >
       <header className="mb-2 flex flex-wrap items-center gap-2">
         <Pill tone={KIND_TONE[a.kind] ?? "neutral"}>{KIND_RU[a.kind] ?? a.kind}</Pill>
+        {online ? (
+          <span title={`${a.provider} · ${a.model ?? "—"} — ответила внешняя LLM`}>
+            <Pill tone="bull" dot>
+              ОНЛАЙН · {a.provider}
+            </Pill>
+          </span>
+        ) : (
+          <span title="локальный детерминированный движок, интернет не использовался">
+            <Pill tone="neutral" dot>
+              ОФЛАЙН · локально
+            </Pill>
+          </span>
+        )}
         <h3 className="text-[15px] font-semibold text-text-1">{a.title}</h3>
         <span className="min-w-0 flex-1" />
         <Tip
@@ -164,22 +179,34 @@ export function CopilotView({ ai }: { ai: ApiState<AiStatusResponse> }) {
 
         <Panel title="Провайдер и изоляция промптов" sub="прозрачность конвейера" className="xl:col-span-4">
           <div className="flex h-full flex-col gap-3">
-            <div className="flex items-center justify-between rounded-md border border-border bg-surface2 px-3 py-2.5">
-              <div className="flex items-center gap-2.5">
-                <Cpu className="size-4 text-text-3" strokeWidth={1.8} />
-                <div>
+            <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface2 px-3 py-2.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <Cpu className="size-4 shrink-0 text-text-3" strokeWidth={1.8} />
+                <div className="min-w-0">
                   <div className="text-[14px] font-medium text-text-1">
-                    {d?.provider.live ? "Внешняя LLM подключена" : "Локальный glassbox-движок"}
+                    {d?.provider.live ? (
+                      <>ОНЛАЙН — <span style={{ color: "var(--green)" }}>внешняя LLM доступна</span></>
+                    ) : (
+                      <>ОФЛАЙН — <span className="text-text-2">только локальный движок</span></>
+                    )}
                   </div>
-                  <div className="num text-[13px] text-text-3">
+                  <div className="num truncate text-[13px] text-text-3">
                     {d?.provider.id ?? "—"} · {d?.provider.model ?? "—"}
                   </div>
+                  {(d?.provider.chain?.length ?? 0) > 0 && (
+                    <div className="num truncate text-[12px] text-text-3" title="Порядок опроса: отвечает первый доступный">
+                      цепочка: {d?.provider.chain.join(" → ")}
+                    </div>
+                  )}
                 </div>
               </div>
-              <Pill tone={d?.provider.live ? "bull" : "warn"} dot>
-                {d?.provider.live ? "LLM LIVE" : "LOCAL"}
+              <Pill tone={d?.provider.live ? "bull" : "neutral"} dot className="shrink-0">
+                {d?.provider.live ? "ОНЛАЙН" : "ОФЛАЙН"}
               </Pill>
             </div>
+            <p className="text-[12.5px] leading-snug text-text-3">
+              Статус выше — первый доступный в цепочке. Кто ответил на конкретный разбор — смотри бейдж ОНЛАЙН/ОФЛАЙН на самой карточке.
+            </p>
 
             <div className="rounded-md border border-border bg-surface2 p-3">
               <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-text-3">
@@ -199,17 +226,17 @@ export function CopilotView({ ai }: { ai: ApiState<AiStatusResponse> }) {
                 Как включить внешнюю LLM
               </div>
               <div className="space-y-1 text-[13px] leading-relaxed text-text-3">
-                <p>Задайте переменные окружения на сервере — гейтвей сам переключится:</p>
+                <p>Проще всего — через Настройки → «ИИ-провайдеры»: ключ, модель и порядок. Либо переменные окружения:</p>
                 <div className="num rounded bg-bg px-2 py-1.5 text-[13px] leading-relaxed text-text-2">
                   NVIDIA_API_KEY=nvapi-… <span className="text-text-3"># NIM, OpenAI-совместимый</span>
                   <br />
-                  LLM_MODEL=meta/llama-3.3-70b-instruct
+                  NVIDIA_MODEL=openai/gpt-oss-20b
                   <br />
-                  <span className="text-text-3"># или любой совместимый шлюз (OpenRouter, g4f-proxy, opencode):</span>
+                  <span className="text-text-3"># или свой шлюз:</span>
                   <br />
-                  LLM_BASE_URL=https://… LLM_API_KEY=…
+                  LLM_BASE_URL=https://… LLM_API_KEY=… LLM_MODEL=…
                 </div>
-                <p>Без ключа работает автономный движок на правилах — разборы остаются предметными.</p>
+                <p>Без доступной LLM работает автономный движок на правилах (бейдж ОФЛАЙН) — разборы остаются предметными.</p>
               </div>
             </div>
           </div>

@@ -1,9 +1,10 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Bot, Check, Cpu, Loader2, Play, RefreshCcw, Send, Sparkles, X, Zap } from "lucide-react";
+import { Bot, Check, Loader2, Play, RefreshCcw, Send, Sparkles, Wifi, WifiOff, X, Zap } from "lucide-react";
 import { postJson, toast } from "./data";
 import { CATEGORY_RU } from "@/lib/format";
+import { isOnlineProvider } from "@/lib/ui-types";
 import { Pill } from "./ui";
 
 /* ================= Типы ================= */
@@ -21,7 +22,7 @@ export interface AiRecommended {
 
 interface AiRunResult {
   analysis: { id: number; kind: string; title: string; content: string; provider: string; model: string | null; createdAt: string };
-  provider: { id: string; model: string | null; live: boolean };
+  provider: { id: string; model: string | null; live: boolean; chain: string[] };
   llmError: string | null;
   contextChars: number;
   stats: { resolved: number; hitRate: number; brier: number; pnl: number; goalPct: number };
@@ -34,6 +35,9 @@ interface Msg {
   role: "ai" | "me";
   text: string;
   meta?: string;
+  /** Кто ответил на это сообщение: внешняя LLM (true) или локальный движок (false). */
+  live?: boolean;
+  providerLabel?: string;
 }
 
 interface DockApi {
@@ -89,7 +93,7 @@ export function AiDockProvider({
   const [rec, setRec] = useState<AiRecommended | null>(null);
   const [draft, setDraft] = useState<AiRecommended | null>(null);
   const [applying, setApplying] = useState(false);
-  const [provider, setProvider] = useState<{ id: string; live: boolean; model: string | null } | null>(null);
+  const [provider, setProvider] = useState<{ id: string; live: boolean; model: string | null; chain: string[] } | null>(null);
 
   const run = useCallback(
     async (s: string, userNote?: string) => {
@@ -100,12 +104,15 @@ export function AiDockProvider({
         setProvider(r.provider);
         setRec(r.recommended);
         setDraft(r.recommended);
+        const live = isOnlineProvider(r.provider.id);
         setMsgs((m) => [
           ...m,
           {
             role: "ai",
             text: r.analysis.content,
-            meta: `${r.provider.live ? `${r.provider.id} · ${r.provider.model}` : "локальный движок правил"} · контекст ${r.contextChars} симв. · ${r.stats.resolved} исходов, HR ${r.stats.hitRate}%`,
+            live,
+            providerLabel: live ? `${r.provider.id} · ${r.provider.model}` : "локальный движок glassbox",
+            meta: `контекст ${r.contextChars} симв. · ${r.stats.resolved} исходов, HR ${r.stats.hitRate}%`,
           },
         ]);
         if (r.llmError) toast("info", "Внешняя модель недоступна", "Ответ собран детерминированным движком на реальных числах базы");
@@ -222,16 +229,36 @@ export function AiDockProvider({
               </div>
             </header>
 
-            {/* provider strip */}
+            {/* provider strip: явно онлайн или офлайн */}
             <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface2 px-4 py-2">
-              <Cpu className="size-3.5 text-text-3" strokeWidth={1.9} />
-              <span className="text-[12px] text-text-3">
-                {provider ? (provider.live ? `${provider.id} · ${provider.model}` : "локальный движок правил (детерминированный)") : "подключение…"}
-              </span>
-              <Pill tone={provider?.live ? "bull" : "warn"} className="ml-auto">
-                {provider?.live ? "LLM LIVE" : "GLASSBOX"}
+              {provider == null ? (
+                <span className="text-[12px] text-text-3">подключение…</span>
+              ) : provider.live ? (
+                <>
+                  <Wifi className="size-3.5 shrink-0" style={{ color: "var(--green)" }} strokeWidth={2} />
+                  <span className="truncate text-[12px] text-text-2">
+                    <b style={{ color: "var(--green)" }}>ОНЛАЙН</b>
+                    <span className="text-text-3"> · {provider.id} · {provider.model}</span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="size-3.5 shrink-0 text-text-3" strokeWidth={2} />
+                  <span className="truncate text-[12px] text-text-2">
+                    <b className="text-text-1">ОФЛАЙН</b>
+                    <span className="text-text-3"> · локальный движок, внешняя LLM недоступна</span>
+                  </span>
+                </>
+              )}
+              <Pill tone={provider?.live ? "bull" : "neutral"} dot className="ml-auto shrink-0">
+                {provider == null ? "…" : provider.live ? "ОНЛАЙН" : "ОФЛАЙН"}
               </Pill>
             </div>
+            {provider && provider.chain.length > 0 && (
+              <div className="num shrink-0 truncate border-b border-border bg-surface px-4 py-1.5 text-[11.5px] text-text-3">
+                цепочка: {provider.chain.join(" → ")}
+              </div>
+            )}
 
             {/* chat */}
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
@@ -243,9 +270,23 @@ export function AiDockProvider({
               {msgs.map((m, i) =>
                 m.role === "ai" ? (
                   <article key={i} className="panel-lift rounded-[10px] border border-border bg-surface2 p-3.5">
-                    <div className="mb-2 flex items-center gap-2">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
                       <Bot className="size-4 text-accent" strokeWidth={2} />
                       <span className="text-[12.5px] font-bold text-text-1">Ответ аналитика</span>
+                      {m.live != null &&
+                        (m.live ? (
+                          <span title={m.providerLabel ?? "внешняя LLM"}>
+                            <Pill tone="bull" dot>
+                              ОНЛАЙН · {m.providerLabel ?? "LLM"}
+                            </Pill>
+                          </span>
+                        ) : (
+                          <span title="локальный детерминированный движок, интернет не использовался">
+                            <Pill tone="neutral" dot>
+                              ОФЛАЙН · локально
+                            </Pill>
+                          </span>
+                        ))}
                     </div>
                     <div className="space-y-1.5">
                       {m.text.split("\n").filter(Boolean).map((line, j) => (
