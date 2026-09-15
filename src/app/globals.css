@@ -1,0 +1,298 @@
+@import "tailwindcss";
+
+/* ============================================================
+   OKX QUANT HYPOTHESES LAB — Design Token System
+   Semantic color discipline: green=bull/hit, red=bear/miss,
+   amber=uncertain, blue=info, accent=brand/interactive only.
+   ============================================================ */
+
+:root {
+  /* Surfaces — тёмная база, но панели заметно светлее фона (читаемость) */
+  --bg: #0a1018;
+  --surface: #172131;
+  --surface2: #1f2c40;
+  --surface3: #2a3950;
+
+  /* Hairlines — только rgba, но контрастнее */
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.26);
+
+  /* Semantic palette */
+  --green: #22d3a0;
+  --green-dim: rgba(34, 211, 160, 0.12);
+  --red: #f56565;
+  --red-dim: rgba(245, 101, 101, 0.12);
+  --blue: #60a5fa;
+  --blue-dim: rgba(96, 165, 250, 0.12);
+  --amber: #fbbf24;
+  --amber-dim: rgba(251, 191, 36, 0.12);
+  --accent: #5b8dee;
+  --accent-dim: rgba(91, 141, 238, 0.14);
+
+  /* Text hierarchy */
+  --text-1: #f4f8ff;
+  --text-2: #c2d0e6;
+  --text-3: #93a6c4;
+
+  /* Type */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Motion — nothing longer than 200ms */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur: 150ms;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-surface3: var(--surface3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-bull: var(--green);
+  --color-bull-dim: var(--green-dim);
+  --color-bear: var(--red);
+  --color-bear-dim: var(--red-dim);
+  --color-info: var(--blue);
+  --color-info-dim: var(--blue-dim);
+  --color-warn: var(--amber);
+  --color-warn-dim: var(--amber-dim);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/* ---------- Base ---------- */
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+/* Subtle deep-space radial illumination — functional depth, not decoration */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 480px at 18% -8%, rgba(91, 141, 238, 0.09), transparent 62%),
+    radial-gradient(900px 420px at 88% -6%, rgba(34, 211, 160, 0.055), transparent 60%);
+  z-index: 0;
+}
+
+::selection {
+  background: rgba(91, 141, 238, 0.35);
+  color: #fff;
+}
+
+/* ---------- Scrollbars ---------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ---------- Motion primitives ---------- */
+
+@keyframes ql-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ql-skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes ql-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes ql-tick {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ql-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+.anim-fade-up {
+  animation: ql-fade-up var(--dur) var(--ease) both;
+}
+
+.anim-tick {
+  animation: ql-tick 160ms var(--ease) both;
+}
+
+.anim-shake {
+  animation: ql-shake 180ms var(--ease) both;
+}
+
+.pulse-dot {
+  animation: ql-pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Staggered mount for lists */
+.stagger > * {
+  animation: ql-fade-up 160ms var(--ease) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 20ms; }
+.stagger > *:nth-child(3) { animation-delay: 40ms; }
+.stagger > *:nth-child(4) { animation-delay: 60ms; }
+.stagger > *:nth-child(5) { animation-delay: 80ms; }
+.stagger > *:nth-child(6) { animation-delay: 100ms; }
+.stagger > *:nth-child(7) { animation-delay: 120ms; }
+.stagger > *:nth-child(8) { animation-delay: 140ms; }
+.stagger > *:nth-child(n + 9) { animation-delay: 160ms; }
+
+/* ---------- Skeleton ---------- */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.07) 50%,
+    rgba(255, 255, 255, 0.03) 75%
+  );
+  background-size: 200% 100%;
+  animation: ql-skeleton 1.6s linear infinite;
+  border-radius: 6px;
+}
+
+/* ---------- Focus system (keyboard navigation) ---------- */
+
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- Micro-interactions ---------- */
+
+.hoverable {
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.pressable:active {
+  transform: scale(0.98);
+}
+
+/* Numeric cells — mono + tabular for perfect column alignment */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Sparkline gradient helpers */
+.spark-up {
+  --spark-line: var(--green);
+  --spark-fill: rgba(34, 211, 160, 0.14);
+}
+.spark-down {
+  --spark-line: var(--red);
+  --spark-fill: rgba(245, 101, 101, 0.14);
+}
+.spark-flat {
+  --spark-line: var(--blue);
+  --spark-fill: rgba(96, 165, 250, 0.14);
+}
+
+/* Heatmap cell intensity (background computed inline via --int) */
+.hm-cell {
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.hm-cell:hover {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  z-index: 5;
+  position: relative;
+}
+
+/* Tooltip portal anchor */
+[data-tip] {
+  position: relative;
+}
+
+
+/* Панели: мягкая подсветка сверху — визуально отделяет от фона */
+.panel-lift {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 64px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 8px 26px rgba(0, 0, 0, 0.32);
+}
+
+input[type="range"] { height: 22px; }
+select, input, textarea { color-scheme: dark; }

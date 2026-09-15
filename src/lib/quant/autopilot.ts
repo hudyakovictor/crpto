@@ -1,0 +1,109 @@
+import { db } from "@/db";
+import { forecasts, hypotheses } from "@/db/schema";
+import { asc, eq } from "drizzle-orm";
+import { autonomousScheduler, type CycleResult } from "./autonomous-scheduler";
+import { learningLoop } from "./learning-loop";
+
+/**
+ * СЕРВЕРНЫЙ АВТОПИЛОТ ЛАБОРАТОРИИ
+ * Раз в минуту проверяет: пора ли новый цикл (каждые ~14 минут).
+ * Цикл: OKX → 15 категорий → 100 комбинаций → до 2 гипотез →
+ * разрешение созревших прогнозов → ПОЛНОЕ переобучение весов
+ * на всей накопленной истории. Чем дольше работает — тем точнее.
+ */
+
+interface AutopilotState {
+  started: boolean;
+  enabled: boolean;
+  intervalSec: number;
+  cyclesCompleted: number;
+  retrainsCompleted: number;
+  lastCycleAt: string | null;
+  lastCycleSummary: string | null;
+  lastError: string | null;
+}
+
+const g = globalThis as typeof globalThis & { __quantAutopilot?: AutopilotState };
+
+function state(): AutopilotState {
+  if (!g.__quantAutopilot) {
+    g.__quantAutopilot = {
+      started: false,
+      enabled: true,
+      intervalSec: 60,
+      cyclesCompleted: 0,
+      retrainsCompleted: 0,
+      lastCycleAt: null,
+      lastCycleSummary: null,
+      lastError: null,
+    };
+  }
+  return g.__quantAutopilot;
+}
+
+async function tick() {
+  const s = state();
+  if (!s.enabled) return;
+
+  const lastRun = autonomousScheduler.getLastRunTime();
+  if (lastRun && Date.now() - lastRun.getTime() < 14 * 60 * 1000) return;
+
+  let result: CycleResult;
+  try {
+    result = await autonomousScheduler.runCycle(false);
+  } catch (err) {
+    s.lastError = err instanceof Error ? err.message : "cycle failed";
+    return;
+  }
+
+  s.cyclesCompleted++;
+  s.lastCycleAt = result.timestamp;
+  s.lastCycleSummary = result.summary;
+  s.lastError = null;
+
+  // Полное переобучение на всей истории после каждого цикла
+  try {
+    const resolved = await db
+      .select()
+      .from(forecasts)
+      .where(eq(forecasts.status, "resolved"))
+      .orderBy(asc(forecasts.createdAt));
+    const hyps = await db.select().from(hypotheses);
+    const hypMap = new Map(hyps.map((h) => [h.id, h]));
+    const events = resolved
+      .filter((f) => f.hypothesisId)
+      .map((f) => ({
+        categories: (hypMap.get(f.hypothesisId!)?.categoriesJson as string[]) ?? [],
+        outcome: (f.outcome ?? "miss") as "hit" | "miss" | "ambiguous" | "expired",
+        realizedReturn: f.realizedReturnNet ?? 0,
+      }))
+      .filter((e) => e.categories.length > 0);
+    if (events.length > 0) {
+      await learningLoop.updateFromOutcomes(events);
+      s.retrainsCompleted++;
+    }
+  } catch (err) {
+    s.lastError = err instanceof Error ? err.message : "retrain failed";
+  }
+}
+
+export function ensureAutopilot(): AutopilotState {
+  const s = state();
+  if (!s.started) {
+    s.started = true;
+    const timer = setInterval(() => void tick(), s.intervalSec * 1000);
+    if (typeof timer.unref === "function") timer.unref();
+    void tick();
+  }
+  return s;
+}
+
+export function setAutopilotEnabled(enabled: boolean): AutopilotState {
+  const s = ensureAutopilot();
+  s.enabled = enabled;
+  return s;
+}
+
+export function getAutopilotState(): AutopilotState {
+  return ensureAutopilot();
+}
