@@ -33,7 +33,7 @@ export function resolveProviders(): ProviderConfig[] {
       id: "nvidia-nim",
       baseUrl: (process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1").replace(/\/$/, ""),
       apiKey: nvidia,
-      model: process.env.NVIDIA_MODEL || "meta/llama-3.3-70b-instruct",
+      model: process.env.NVIDIA_MODEL || "openai/gpt-oss-20b",
     });
   } else {
     // Хардкод ключа NVIDIA в качестве резерва при отсутствии env vars
