@@ -20,7 +20,17 @@ export interface AiProviderMeta {
   defaultModel: string;
   envKey?: string;
   defaultTimeoutMs: number;
+  /** Дополнительные поля тела /chat/completions (например { think: false } для thinking-моделей Ollama). */
+  chatExtra?: Record<string, unknown>;
+  /** Упрощённый системный промпт для маленьких локальных моделей (иначе строгий промпт вводит их в ступор). */
+  systemPrompt?: string;
+  /** Лимит токенов ответа (thinking-моделям нужно больше — мышление съедает бюджет). */
+  maxTokens?: number;
 }
+
+export const QWEN_LOCAL_SYSTEM_PROMPT = `Ты — квант-аналитик крипто-исследовательской лаборатории. Пиши ТОЛЬКО по-русски, только пронумерованные пункты без вступлений.
+Используй ИСКЛЮЧИТЕЛЬНО числа из присланного контекста, ничего не выдумывай. Если данных мало — так и напиши.
+Учитывай издержки round-trip около 24 bps. Не давай инвестиционных рекомендаций.`;
 
 export const AI_PROVIDER_META: Record<AiProviderId, AiProviderMeta> = {
   nvidia: {
@@ -59,7 +69,10 @@ export const AI_PROVIDER_META: Record<AiProviderId, AiProviderMeta> = {
     needsKey: false,
     defaultBaseUrl: "http://localhost:11434/v1",
     defaultModel: "qwen2.5:7b",
-    defaultTimeoutMs: 60000,
+    defaultTimeoutMs: 240000,
+    chatExtra: { think: false },
+    systemPrompt: QWEN_LOCAL_SYSTEM_PROMPT,
+    maxTokens: 2048,
   },
 };
 
@@ -248,10 +261,22 @@ function envPrefix(id: AiProviderId): string {
 }
 
 /** Цепочка провайдеров для вызовов LLM — в порядке из настроек, только включённые. */
-export async function resolveProvidersFromSettings(): Promise<(ProviderConfig & { timeoutMs: number })[]> {
+export async function resolveProvidersFromSettings(): Promise<
+  (ProviderConfig & {
+    timeoutMs: number;
+    chatExtra?: Record<string, unknown>;
+    systemPrompt?: string;
+    maxTokens?: number;
+  })[]
+> {
   const row = await loadRow();
   const state = toState(row);
-  const out: (ProviderConfig & { timeoutMs: number })[] = [];
+  const out: (ProviderConfig & {
+    timeoutMs: number;
+    chatExtra?: Record<string, unknown>;
+    systemPrompt?: string;
+    maxTokens?: number;
+  })[] = [];
   for (const id of state.order) {
     if (!state.enabled.includes(id)) continue;
     const meta = AI_PROVIDER_META[id];
@@ -266,7 +291,16 @@ export async function resolveProvidersFromSettings(): Promise<(ProviderConfig & 
     );
     const { key } = effectiveKey(id, state);
     if (meta.needsKey && !key) continue; // пропускаем провайдеры без ключа
-    out.push({ id, baseUrl, apiKey: key, model, timeoutMs: meta.defaultTimeoutMs });
+    out.push({
+      id,
+      baseUrl,
+      apiKey: key,
+      model,
+      timeoutMs: meta.defaultTimeoutMs,
+      chatExtra: meta.chatExtra,
+      systemPrompt: meta.systemPrompt,
+      maxTokens: meta.maxTokens,
+    });
   }
   return out;
 }

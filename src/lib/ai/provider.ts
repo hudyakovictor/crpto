@@ -124,7 +124,7 @@ export function resolveProviders(): ProviderConfig[] {
 }
 
 export async function callProvider(
-  p: ProviderConfig,
+  p: ProviderConfig & { chatExtra?: Record<string, unknown>; systemPrompt?: string; maxTokens?: number },
   userPrompt: string,
   timeoutMs = 28000
 ): Promise<string> {
@@ -138,11 +138,12 @@ export async function callProvider(
       body: JSON.stringify({
         model: p.model,
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
+          { role: "system", content: p.systemPrompt ?? SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.2,
-        max_tokens: 900,
+        max_tokens: p.maxTokens ?? 900,
+        ...(p.chatExtra ?? {}),
       }),
     });
     if (!res.ok) {
@@ -150,7 +151,8 @@ export async function callProvider(
       throw new Error(`${p.id} HTTP ${res.status} ${body.slice(0, 120)}`);
     }
     const json = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string }; finish_reason?: string }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
     };
     const text = json?.choices?.[0]?.message?.content;
     if (!text || typeof text !== "string" || text.trim().length < 20) {
