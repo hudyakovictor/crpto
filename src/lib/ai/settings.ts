@@ -8,7 +8,7 @@ import type { ProviderConfig } from "./provider";
  * Клиенту ключи НЕ возвращаются — только флаги hasKey и источник.
  */
 
-export const AI_PROVIDER_IDS = ["nvidia", "opencode", "gpt4free", "qwen-local"] as const;
+export const AI_PROVIDER_IDS = ["nvidia", "opencode", "gpt4free"] as const;
 export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
 
 export interface AiProviderMeta {
@@ -27,10 +27,6 @@ export interface AiProviderMeta {
   /** Лимит токенов ответа (thinking-моделям нужно больше — мышление съедает бюджет). */
   maxTokens?: number;
 }
-
-export const QWEN_LOCAL_SYSTEM_PROMPT = `Ты — квант-аналитик крипто-исследовательской лаборатории. Пиши ТОЛЬКО по-русски, только пронумерованные пункты без вступлений.
-Используй ИСКЛЮЧИТЕЛЬНО числа из присланного контекста, ничего не выдумывай. Если данных мало — так и напиши.
-Учитывай издержки round-trip около 24 bps. Не давай инвестиционных рекомендаций.`;
 
 export const AI_PROVIDER_META: Record<AiProviderId, AiProviderMeta> = {
   nvidia: {
@@ -61,18 +57,6 @@ export const AI_PROVIDER_META: Record<AiProviderId, AiProviderMeta> = {
     defaultBaseUrl: "https://api.gpt4free.co/v1",
     defaultModel: "gpt-3.5-turbo",
     defaultTimeoutMs: 28000,
-  },
-  "qwen-local": {
-    id: "qwen-local",
-    titleRu: "Qwen (local)",
-    hintRu: "Локальный Ollama: http://localhost:11434/v1, модель qwen2.5:7b. Ключ обычно не нужен.",
-    needsKey: false,
-    defaultBaseUrl: "http://localhost:11434/v1",
-    defaultModel: "qwen2.5:7b",
-    defaultTimeoutMs: 240000,
-    chatExtra: { think: false },
-    systemPrompt: QWEN_LOCAL_SYSTEM_PROMPT,
-    maxTokens: 2048,
   },
 };
 
@@ -148,8 +132,8 @@ function ensureTable(): Promise<void> {
         `CREATE TABLE IF NOT EXISTS ai_provider_settings (
           id SERIAL PRIMARY KEY,
           profile TEXT NOT NULL DEFAULT 'default' UNIQUE,
-          provider_order TEXT NOT NULL DEFAULT 'nvidia,opencode,gpt4free,qwen-local',
-          enabled TEXT NOT NULL DEFAULT 'nvidia,opencode,gpt4free,qwen-local',
+          provider_order TEXT NOT NULL DEFAULT 'nvidia,opencode,gpt4free',
+          enabled TEXT NOT NULL DEFAULT 'nvidia,opencode,gpt4free',
           configs JSONB NOT NULL DEFAULT '{}',
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )`
@@ -255,8 +239,6 @@ function envPrefix(id: AiProviderId): string {
       return "OPENCODE";
     case "gpt4free":
       return "GPT4FREE";
-    case "qwen-local":
-      return "QWEN_LOCAL";
   }
 }
 

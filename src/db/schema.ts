@@ -180,8 +180,8 @@ export const aiAnalyses = pgTable("ai_analyses", {
 export const aiProviderSettings = pgTable("ai_provider_settings", {
   id: serial("id").primaryKey(),
   profile: text("profile").notNull().default("default").unique(),
-  providerOrder: text("provider_order").notNull().default("nvidia,opencode,gpt4free,qwen-local"),
-  enabled: text("enabled").notNull().default("nvidia,opencode,gpt4free,qwen-local"),
+  providerOrder: text("provider_order").notNull().default("nvidia,opencode,gpt4free"),
+  enabled: text("enabled").notNull().default("nvidia,opencode,gpt4free"),
   configs: jsonb("configs").notNull().default({}),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

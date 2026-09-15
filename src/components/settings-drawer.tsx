@@ -537,8 +537,7 @@ export function SettingsDrawer({
                       Сохранить ИИ
                     </button>
                     <p className="text-[12.5px] leading-snug text-text-3">
-                      Ключи хранятся только в локальной БД и никогда не показываются обратно. Qwen local работает через
-                      Ollama без ключа.
+                      Ключи хранятся только в локальной БД и никогда не показываются обратно.
                     </p>
                   </div>
                 )}

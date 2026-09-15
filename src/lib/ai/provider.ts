@@ -1,5 +1,5 @@
 /**
- * Провайдеры LLM. Дефолтный порядок: NVIDIA NIM → OpenCode Zen → gpt4free → Qwen local (Ollama).
+ * Провайдеры LLM. Дефолтный порядок: NVIDIA NIM → OpenCode Zen → gpt4free.
  * Пользовательский порядок и вкл/выкл хранятся в ai_provider_settings (см. lib/ai/settings.ts).
  * Все ProviderConfig говорят по одному протоколу /chat/completions.
  * Если ни один не настроен или все упали — вызывающий код уходит в glassbox.
@@ -102,14 +102,6 @@ export function resolveProviders(): ProviderConfig[] {
     baseUrl: (process.env.GPT4FREE_BASE_URL || "https://api.gpt4free.co/v1").replace(/\/$/, ""),
     apiKey: "",
     model: process.env.GPT4FREE_MODEL || "gpt-3.5-turbo",
-  });
-
-  // 5. Qwen local (Ollama, OpenAI-совместимый /v1). Без ключа по умолчанию.
-  list.push({
-    id: "qwen-local",
-    baseUrl: (process.env.QWEN_LOCAL_BASE_URL || "http://localhost:11434/v1").replace(/\/$/, ""),
-    apiKey: process.env.QWEN_LOCAL_API_KEY || "",
-    model: process.env.QWEN_LOCAL_MODEL || "qwen2.5:7b",
   });
 
   // 5. Хардкод ключей как последний резерв
