@@ -351,6 +351,8 @@ export interface AiAnalysisRow {
   provider: string;
   model: string | null;
   createdAt: string;
+  /** Причина офлайн-фолбэка (если разбор дал glassbox вместо LLM). */
+  contextJson?: { llmError?: string | null } & Record<string, unknown> | null;
 }
 
 /** Провайдер локального детерминированного движка (офлайн, без внешней LLM). */

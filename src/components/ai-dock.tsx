@@ -105,6 +105,7 @@ export function AiDockProvider({
         setRec(r.recommended);
         setDraft(r.recommended);
         const live = isOnlineProvider(r.provider.id);
+        const reason = !live && r.llmError ? ` · причина: ${r.llmError.slice(0, 160)}` : "";
         setMsgs((m) => [
           ...m,
           {
@@ -112,7 +113,7 @@ export function AiDockProvider({
             text: r.analysis.content,
             live,
             providerLabel: live ? `${r.provider.id} · ${r.provider.model}` : "локальный движок glassbox",
-            meta: `контекст ${r.contextChars} симв. · ${r.stats.resolved} исходов, HR ${r.stats.hitRate}%`,
+            meta: `контекст ${r.contextChars} симв. · ${r.stats.resolved} исходов, HR ${r.stats.hitRate}%${reason}`,
           },
         ]);
         if (r.llmError) toast("info", "Внешняя модель недоступна", "Ответ собран детерминированным движком на реальных числах базы");

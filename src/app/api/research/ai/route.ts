@@ -97,7 +97,12 @@ export async function POST(req: Request) {
           content,
           provider: usedProvider,
           model: usedModel,
-          contextJson: { scope, smalltalk: true, note: noteText },
+          contextJson: {
+            scope,
+            smalltalk: true,
+            note: noteText,
+            llmError: errors.length ? errors.join(" | ").slice(0, 500) : null,
+          },
           createdAt: new Date(),
         })
         .returning();
@@ -166,6 +171,8 @@ export async function POST(req: Request) {
           contextChars: ctx.text.length,
           stats: ctx.stats,
           note: body.note ?? null,
+          // Причина офлайн-фолбэка — чтобы в журнале было видно, почему ответил glassbox.
+          llmError: errors.length ? errors.join(" | ").slice(0, 500) : null,
         },
         createdAt: new Date(),
       })

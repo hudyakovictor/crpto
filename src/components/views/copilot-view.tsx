@@ -78,6 +78,7 @@ function AnalysisCard({ a, fresh }: { a: AiAnalysisRow; fresh?: boolean }) {
               <TipRow k="Движок" v={a.provider} />
               <TipRow k="Модель" v={a.model ?? "—"} />
               <TipRow k="Создан" v={fmtClock(a.createdAt)} />
+              {a.contextJson?.llmError ? <TipRow k="Почему офлайн" v={String(a.contextJson.llmError).slice(0, 160)} /> : null}
             </div>
           }
         >
